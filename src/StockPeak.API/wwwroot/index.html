@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StockPeak: see when a stock has topped out</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head>
+<body>
+<header>
+  <b class="logo">StockPeak</b>
+  <nav id="views"><button data-v="market" class="on">Market</button><button data-v="journal" data-auth hidden>Journal</button><button data-v="team" data-auth hidden>Team</button></nav>
+  <div class="tools">
+    <select id="ws" hidden aria-label="Workspace"></select>
+    <button id="bell" class="ghost" hidden>Alerts <i id="badge" hidden>0</i></button>
+    <button id="plansBtn" class="ghost">Plans</button>
+    <button id="authBtn">Sign in</button>
+  </div>
+</header>
+
+<div id="v-market">
+  <section id="learn" class="slider" aria-roledescription="carousel" aria-label="How to place a stock trade">
+    <div class="viewport"><div class="track" id="track"></div></div>
+    <div class="ctl"><button id="prev" class="ghost" aria-label="Previous step">&lsaquo;</button><div id="dots"></div><button id="next" class="ghost" aria-label="Next step">&rsaquo;</button></div>
+  </section>
+  <main>
+    <aside>
+      <input id="q" type="search" placeholder="Search stocks" aria-label="Search stocks">
+      <div class="tabs" id="filters"><button data-f="all" class="on">All</button><button data-f="PEAK">At peak</button><button data-f="BOTTOM">At bottom</button><button data-f="watch">Watchlist</button></div>
+      <ul id="list"></ul>
+    </aside>
+    <section>
+      <div class="head">
+        <div><h1 id="sym">Loading</h1><p id="nm"></p></div>
+        <div class="px"><strong id="px"></strong><span id="sig" class="sig"></span></div>
+        <button id="watch" class="ghost">Add to watchlist</button>
+      </div>
+      <div class="range" id="range"><button data-d="60">60D</button><button data-d="120" class="on">120D</button><button data-d="365">1Y</button></div>
+      <canvas id="chart" aria-label="Price chart with peaks and troughs"></canvas>
+      <p class="legend"><span class="dot pk"></span>Peak <span class="dot tr"></span>Trough</p>
+      <div class="grid">
+        <div class="card"><h3>Reading</h3><div id="stats"></div></div>
+        <div class="card"><h3>AI forecast</h3><p>See where Gemini expects this stock to be in 7 days.</p><button id="aiBtn">Get forecast</button><div id="aiOut"></div></div>
+        <div class="card"><h3>Position calculator</h3>
+          <label>Shares <input id="shares" type="number" min="0" value="10"></label>
+          <label>Bought at <input id="cost" type="number" min="0" step="0.01" value="100"></label>
+          <p id="pnl"></p></div>
+      </div>
+      <p class="fine">Signals and forecasts are for information only and are not financial advice. Demo prices are simulated. StockPeak does not place orders.</p>
+    </section>
+  </main>
+</div>
+
+<main class="one" id="v-journal" hidden><section>
+  <h2>Trade journal</h2>
+  <div id="jstats" class="statrow"></div>
+  <details class="card" open><summary>Log a trade</summary>
+    <form id="tradeForm" class="form" novalidate>
+      <label>Stock <input id="tSym" list="symbols" placeholder="AAPL"></label><datalist id="symbols"></datalist>
+      <label>Side <select id="tSide"><option>Buy</option><option>Sell</option></select></label>
+      <label>Shares <input id="tQty" type="number" min="0" step="any"></label>
+      <label>Entry price <input id="tEntry" type="number" min="0" step="any"></label>
+      <label>Fees <input id="tFees" type="number" min="0" step="any" value="0"></label>
+      <label>Strategy <input id="tStrat" placeholder="Breakout, pullback, news..."></label>
+      <label class="wide">Why am I entering this trade? <textarea id="tWhy" rows="2"></textarea></label>
+      <div class="actions wide"><button type="submit">Log trade</button><span id="tErr" class="err"></span></div>
+    </form>
+  </details>
+  <div class="bar">
+    <div class="tabs" id="jfilter"><button data-s="" class="on">All</button><button data-s="open">Open</button><button data-s="closed">Closed</button></div>
+    <label id="allRow" hidden><input type="checkbox" id="allBox"> Everyone in this workspace</label>
+    <button class="ghost" id="exportBtn">Export CSV</button>
+  </div>
+  <div id="trades"></div>
+</section></main>
+
+<main class="one" id="v-team" hidden><section>
+  <h2 id="wsName">Team</h2>
+  <div id="overview" class="statrow"></div>
+  <div class="grid">
+    <div class="card"><h3>Members</h3><div id="members"></div></div>
+    <div class="card" id="inviteCard"><h3>Invite someone</h3>
+      <form id="inviteForm" class="form one" novalidate><label>Email <input id="iEmail" type="email"></label><label>Role <select id="iRole"></select></label><button type="submit">Send invitation</button></form>
+      <p id="inviteOut" class="fine"></p><div id="invites"></div></div>
+    <div class="card"><h3>New workspace</h3><p>Use the same email for another team or business. Each workspace has its own members and roles.</p>
+      <form id="wsForm" class="form one" novalidate><label>Name <input id="wName"></label><button type="submit">Create workspace</button></form></div>
+  </div>
+</section></main>
+
+<dialog id="authDlg"><form id="authForm" novalidate>
+  <h2 id="authTitle"></h2><p id="authHint" class="fine"></p>
+  <label data-m="register invite">Name <input id="name" autocomplete="name"></label>
+  <label data-m="register">I am signing up as <select id="role"><option value="User">User: track stocks and journal trades</option><option value="Merchant">Merchant: run a business workspace</option></select></label>
+  <label data-m="register">Workspace name (optional) <input id="wsname"></label>
+  <label data-m="login register forgot reset otp invite">Email <input id="email" type="email" autocomplete="email"></label>
+  <label data-m="otp reset">6-digit code <input id="code" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+  <label data-m="login register invite">Password <input id="pw" type="password" autocomplete="current-password"></label>
+  <label data-m="reset">New password <input id="npw" type="password" autocomplete="new-password"></label>
+  <p id="authErr" class="err"></p>
+  <div class="actions"><button type="submit" id="authGo"></button><span id="links"></span><button type="button" class="ghost close">Close</button></div>
+</form></dialog>
+
+<dialog id="closeDlg"><form id="closeForm" novalidate>
+  <h2 id="closeTitle">Complete this trade</h2><p class="fine" id="closeSub"></p>
+  <div id="exitRows" class="form"><label>Exit price <input id="cExit" type="number" min="0" step="any"></label><label>Extra fees <input id="cFees" type="number" min="0" step="any" value="0"></label></div>
+  <label>What did I do? <textarea id="cDid" rows="2" placeholder="Entered on the breakout, moved my stop to break-even..."></textarea></label>
+  <label>What went well? <textarea id="cWell" rows="2"></textarea></label>
+  <label>What would I change next time? <textarea id="cBetter" rows="2"></textarea></label>
+  <p id="cErr" class="err"></p>
+  <div class="actions"><button type="submit" id="cGo">Complete trade</button><button type="button" class="ghost close">Cancel</button></div>
+</form></dialog>
+
+<dialog id="plansDlg"><h2>Choose a plan</h2><div class="plans" id="plans"></div><div class="actions"><button class="ghost close">Close</button></div></dialog>
+<dialog id="notifDlg"><h2>Alerts</h2><ul id="notifs"></ul><div class="actions"><button class="ghost close">Close</button></div></dialog>
+<div id="toast" role="status"></div>
+<script src="app.js"></script>
+</body></html>

@@ -1,0 +1,18 @@
+# Local development extras. Loaded automatically by `docker compose up`.
+# Production ignores this file: docker compose -f docker-compose.yml up -d
+services:
+  db:
+    ports:
+      - "127.0.0.1:5432:5432"
+  api:
+    environment:
+      Swagger__Enabled: "true"
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      Smtp__EnableSsl: "false"
+    ports:
+      - "8080:8080"
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"

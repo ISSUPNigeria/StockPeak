@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="src/StockPeak.Shared/StockPeak.Shared.csproj" />
+  <Project Path="src/StockPeak.Domain/StockPeak.Domain.csproj" />
+  <Project Path="src/StockPeak.Application/StockPeak.Application.csproj" />
+  <Project Path="src/StockPeak.Infrastructure/StockPeak.Infrastructure.csproj" />
+  <Project Path="src/StockPeak.API/StockPeak.API.csproj" />
+</Solution>

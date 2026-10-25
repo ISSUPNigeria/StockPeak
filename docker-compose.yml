@@ -1,0 +1,63 @@
+# Production stack: PostgreSQL + API + Caddy (automatic HTTPS).
+# Run:  docker compose -f docker-compose.yml up -d --build
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stockpeak}
+      POSTGRES_USER: ${POSTGRES_USER:-stockpeak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ConnectionStrings__Default: Host=dpg-dbf2fq2vcj2c73ejlb10-a.frankfurt-postgres.render.com;Port=5432;Database=${POSTGRES_DB:-stockpeak};Username=${POSTGRES_USER:-stockpeak_user};Password=${POSTGRES_PASSWORD}
+      App__BaseUrl: https://${DOMAIN:-localhost}
+      Jwt__Key: ${JWT_KEY:?Set JWT_KEY in .env (32+ random characters)}
+      Admin__Emails__0: ${ADMIN_EMAIL:-}
+      Swagger__Enabled: ${SWAGGER_ENABLED:-false}
+      Gemini__ApiKey: ${GEMINI_API_KEY:-}
+      Flutterwave__SecretKey: ${FLW_SECRET_KEY:-}
+      Flutterwave__SecretHash: ${FLW_SECRET_HASH:-}
+      Flutterwave__Currency: ${FLW_CURRENCY:-USD}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__From: ${SMTP_FROM:-StockPeak <no-reply@example.com>}
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
