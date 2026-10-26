@@ -111,96 +111,137 @@ public class FlutterwaveGateway(HttpClient http, IConfiguration cfg) : IPaymentG
     }
 }
 
-public class SmtpEmailSender : IEmailSender
+public class ResendEmailSender : IEmailSender
 {
+    private readonly HttpClient _http;
     private readonly IConfiguration _cfg;
-    private readonly ILogger<SmtpEmailSender> _log;
 
-    public SmtpEmailSender(
-        IConfiguration cfg,
-        ILogger<SmtpEmailSender> log)
+    public ResendEmailSender(
+        HttpClient http,
+        IConfiguration cfg)
     {
+        _http = http;
         _cfg = cfg;
-        _log = log;
     }
 
-    public async Task SendAsync(string to, string subject, string html)
+    public async Task SendAsync(
+        string to,
+        string subject,
+        string html)
     {
-        var host = _cfg["Smtp:Host"];
-        var port = int.TryParse(_cfg["Smtp:Port"], out var p) ? p : 587;
-        var enableSsl = _cfg.GetValue("Smtp:EnableSsl", true);
-        var user = _cfg["Smtp:User"];
-        var password = _cfg["Smtp:Password"];
-        var from = _cfg["Smtp:From"] ?? user;
+        _http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer",
+                _cfg["Resend:ApiKey"]);
 
-        _log.LogInformation(
-            "SMTP SETTINGS => Host={Host}, Port={Port}, SSL={Ssl}, User={User}, From={From}",
-            host,
-            port,
-            enableSsl,
-            user,
-            from);
-
-        if (string.IsNullOrWhiteSpace(host))
-        {
-            _log.LogError("SMTP HOST IS NULL OR EMPTY");
-            return;
-        }
-
-        try
-        {
-            _log.LogInformation(
-                "ATTEMPTING TO SEND EMAIL => To={To}, Subject={Subject}",
-                to,
-                subject);
-
-            using var client = new SmtpClient(host, port)
+        var response = await _http.PostAsJsonAsync(
+            "https://api.resend.com/emails",
+            new
             {
-                EnableSsl = enableSsl,
-                DeliveryMethod = SmtpDeliveryMethod.Network,
-                UseDefaultCredentials = false,
-                Credentials = new NetworkCredential(user, password),
-                Timeout = 30000
-            };
+                from = "onboarding@resend.dev",
+                to = new[] { to },
+                subject,
+                html
+            });
 
-            using var message = new MailMessage
-            {
-                From = new MailAddress(from!, "StockPeak"),
-                Subject = subject,
-                Body = html,
-                IsBodyHtml = true
-            };
+        var content = await response.Content.ReadAsStringAsync();
 
-            message.To.Add(to);
+        Console.WriteLine(content);
 
-            await client.SendMailAsync(message);
-
-            _log.LogInformation(
-                "EMAIL SENT SUCCESSFULLY => To={To}",
-                to);
-        }
-        catch (SmtpException ex)
-        {
-            _log.LogError(
-                ex,
-                "SMTP ERROR => To={To}, Host={Host}, User={User}",
-                to,
-                host,
-                user);
-
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _log.LogError(
-                ex,
-                "GENERAL EMAIL ERROR => To={To}",
-                to);
-
-            throw;
-        }
+        response.EnsureSuccessStatusCode();
     }
 }
+
+//public class SmtpEmailSender : IEmailSender
+//{
+//    private readonly IConfiguration _cfg;
+//    private readonly ILogger<SmtpEmailSender> _log;
+
+//    public SmtpEmailSender(
+//        IConfiguration cfg,
+//        ILogger<SmtpEmailSender> log)
+//    {
+//        _cfg = cfg;
+//        _log = log;
+//    }
+
+//    public async Task SendAsync(string to, string subject, string html)
+//    {
+//        var host = _cfg["Smtp:Host"];
+//        var port = int.TryParse(_cfg["Smtp:Port"], out var p) ? p : 587;
+//        var enableSsl = _cfg.GetValue("Smtp:EnableSsl", true);
+//        var user = _cfg["Smtp:User"];
+//        var password = _cfg["Smtp:Password"];
+//        var from = _cfg["Smtp:From"] ?? user;
+
+//        _log.LogInformation(
+//            "SMTP SETTINGS => Host={Host}, Port={Port}, SSL={Ssl}, User={User}, From={From}",
+//            host,
+//            port,
+//            enableSsl,
+//            user,
+//            from);
+
+//        if (string.IsNullOrWhiteSpace(host))
+//        {
+//            _log.LogError("SMTP HOST IS NULL OR EMPTY");
+//            return;
+//        }
+
+//        try
+//        {
+//            _log.LogInformation(
+//                "ATTEMPTING TO SEND EMAIL => To={To}, Subject={Subject}",
+//                to,
+//                subject);
+
+//            using var client = new SmtpClient(host, port)
+//            {
+//                EnableSsl = enableSsl,
+//                DeliveryMethod = SmtpDeliveryMethod.Network,
+//                UseDefaultCredentials = false,
+//                Credentials = new NetworkCredential(user, password),
+//                Timeout = 30000
+//            };
+
+//            using var message = new MailMessage
+//            {
+//                From = new MailAddress(from!, "StockPeak"),
+//                Subject = subject,
+//                Body = html,
+//                IsBodyHtml = true
+//            };
+
+//            message.To.Add(to);
+
+//            await client.SendMailAsync(message);
+
+//            _log.LogInformation(
+//                "EMAIL SENT SUCCESSFULLY => To={To}",
+//                to);
+//        }
+//        catch (SmtpException ex)
+//        {
+//            _log.LogError(
+//                ex,
+//                "SMTP ERROR => To={To}, Host={Host}, User={User}",
+//                to,
+//                host,
+//                user);
+
+//            throw;
+//        }
+//        catch (Exception ex)
+//        {
+//            _log.LogError(
+//                ex,
+//                "GENERAL EMAIL ERROR => To={To}",
+//                to);
+
+//            throw;
+//        }
+//    }
+//}
 
 public class TokenService(IConfiguration c)
 {
@@ -336,7 +377,7 @@ public static class DependencyInjection
     public static IServiceCollection AddInfrastructure(this IServiceCollection s, IConfiguration c)
     {
         s.AddDbContext<AppDbContext>(o => o.UseNpgsql(c.GetConnectionString("Default")));
-        s.AddSingleton<IMarketDataService, SimulatedMarketData>(); s.AddSingleton<IEmailSender, SmtpEmailSender>(); s.AddSingleton<TokenService>();
+        s.AddSingleton<IMarketDataService, SimulatedMarketData>(); s.AddHttpClient<IEmailSender, ResendEmailSender>(); s.AddSingleton<TokenService>();
         s.AddHttpClient<IAiPredictor, GeminiPredictor>(); s.AddHttpClient<IPaymentGateway, FlutterwaveGateway>();
         s.AddScoped<BillingService>(); s.AddScoped<AuthService>(); s.AddScoped<OtpService>(); s.AddHostedService<PeakAlertWorker>();
         return s;
