@@ -323,19 +323,18 @@ public class BillingService(AppDbContext db, IPaymentGateway gw, IEmailSender ma
 {
     public async Task<bool> ActivateAsync(string txRef, string txId)
     {
-        Console.WriteLine(
-        $"ACTIVATE START txRef={txRef} txId={txId}");
         var p = await db.Payments.FirstOrDefaultAsync(x => x.TxRef == txRef);
-        Console.WriteLine(
-        $"PAYMENT FOUND={p != null}");
         if (p is null) return false;
         if (p.Status == "paid") return true;
-        if (!await gw.VerifyAsync(txId, txRef, p.Amount)) { p.Status = "failed"; await db.SaveChangesAsync(); return false; }
-        Console.WriteLine(
-        $"VERIFY RESULT={p.Status}");
+        if (!await gw.VerifyAsync(txId, txRef, p.Amount)) return false;
+
+        var pid = p.Id;
+        var claimed = await db.Payments.Where(x => x.Id == pid && x.Status != "paid").ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, "paid"));
+        if (claimed == 0) return true; // the other request already activated it
+
         var u = await db.Users.FindAsync(p.UserId); if (u is null) return false;
         var from = u.PlanExpiresAt > DateTime.UtcNow ? u.PlanExpiresAt.Value : DateTime.UtcNow;
-        p.Status = "paid"; u.Plan = p.Plan; u.PlanExpiresAt = from.AddDays(30);
+        u.Plan = p.Plan; u.PlanExpiresAt = from.AddDays(30);
         db.Notifications.Add(new() { UserId = u.Id, Title = "Subscription active", Body = $"Your {p.Plan} plan runs until {u.PlanExpiresAt:d MMM yyyy}." });
         await db.SaveChangesAsync();
         try { await mail.SendAsync(u.Email, "Your StockPeak plan is active", $"<p>Hi {WebUtility.HtmlEncode(u.Name)}, your <b>{p.Plan}</b> plan is active until {u.PlanExpiresAt:d MMM yyyy}.</p>"); } catch { }

@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"\x27]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "\x27": "&#39;" }[c]));
 const money = n => Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dt = s => new Date(/Z$|[+-]\d\d:\d\d$/.test(s) ? s : s + "Z");
 let quotes = [], cur = null, detail = null, filter = "all", days = 120, hover = -1, user = null, watch = new Set();
 let mode = "login", authEmail = "", inviteToken = null, tradeStatus = "", closing = null, view = "market";
 
@@ -177,7 +178,9 @@ function tradeCard(t) {
     <span>${t.quantity} shares at ${money(t.entryPrice)}${closed ? ` to ${money(t.exitPrice)}` : ""}</span><span class="sp"></span>
     ${closed ? `<strong class="${p >= 0 ? "up" : "down"}">${p >= 0 ? "+" : ""}${money(p)}</strong>` : `<span class="sig">Open</span>`}
     <button class="mini" data-act="${closed ? "review" : "close"}" data-id="${t.id}">${closed ? "Edit review" : "Complete trade"}</button><button class="mini ghost" data-act="del" data-id="${t.id}">Delete</button></div>
-    <small>${new Date(t.openedAt + "Z").toLocaleDateString()}${t.strategy ? " | " + esc(t.strategy) : ""}</small>${t.reason ? `<p>${esc(t.reason)}</p>` : ""}${rv ? `<div class="review">${rv}</div>` : ""}</article>`;
+    <small>${dt(t.openedAt).toLocaleDateString()}
+    ${t.strategy ? " | " + esc(t.strategy) : ""}</small>
+    ${t.reason ? `<p>${esc(t.reason)}</p>` : ""}${rv ? `<div class="review">${rv}</div>` : ""}</article>`;
 }
 $("#tradeForm").onsubmit = async e => { e.preventDefault(); $("#tErr").textContent = "";
   try { await api("/trades", { method: "POST", body: { symbol: $("#tSym").value, side: $("#tSide").value, quantity: +$("#tQty").value, entryPrice: +$("#tEntry").value, fees: +$("#tFees").value || 0, strategy: $("#tStrat").value, reason: $("#tWhy").value } });
@@ -230,7 +233,7 @@ $("#plans").onclick = async e => { const p = e.target.dataset.p; if (!p) return;
 // ---------- Alerts ----------
 async function loadNotifs() { if (!user) return; const n = await api("/notifications"), unread = n.filter(x => !x.isRead).length; $("#badge").hidden = !unread; $("#badge").textContent = unread; window._n = n; }
 $("#bell").onclick = async () => { const n = window._n || [];
-  $("#notifs").innerHTML = n.length ? n.map(x => `<li class="${x.isRead ? "" : "new"}"><b>${esc(x.title)}</b><br>${esc(x.body)}<br><small>${new Date(x.createdAt + "Z").toLocaleString()}</small></li>`).join("") : "<li>No alerts yet. Add stocks to your watchlist to get peak alerts.</li>";
+    $("#notifs").innerHTML = n.length ? n.map(x => `<li class="${x.isRead ? "" : "new"}"><b>${esc(x.title)}</b><br>${esc(x.body)}<br><small>${dt(x.createdAt).toLocaleString()}</small></li>`).join("") : "<li>No alerts yet. Add stocks to your watchlist to get peak alerts.</li>";
   $("#notifDlg").showModal(); await api("/notifications/read", { method: "POST" }); $("#badge").hidden = true; };
 $$("dialog .close").forEach(b => b.onclick = () => b.closest("dialog").close());
 

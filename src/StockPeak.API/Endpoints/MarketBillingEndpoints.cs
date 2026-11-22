@@ -86,11 +86,24 @@ public static class BillingEndpoints
                 ok ? "/?paid=1" : "/?paid=0");
         });
 
-        g.MapPost("/webhook", async (HttpRequest req, IConfiguration cfg, BillingService bs, JsonElement body) =>
+        g.MapPost("/webhook", async (HttpRequest req, IConfiguration cfg, BillingService bs, ILoggerFactory lf) =>
         {
-            if (req.Headers["verif-hash"] != cfg["Flutterwave:SecretHash"]) return Results.Unauthorized();
-            if (body.TryGetProperty("data", out var d)) await bs.ActivateAsync(d.GetProperty("tx_ref").GetString()!, d.GetProperty("id").GetInt64().ToString());
+            var log = lf.CreateLogger("Webhook");
+            var secret = cfg["Flutterwave:SecretHash"];
+            if (string.IsNullOrEmpty(secret) || req.Headers["verif-hash"] != secret)
+            { log.LogWarning("Webhook rejected: verif-hash missing or different from Flutterwave:SecretHash"); return Results.Unauthorized(); }
+
+            using var doc = await JsonDocument.ParseAsync(req.Body);
+            if (doc.RootElement.TryGetProperty("data", out var d) && d.TryGetProperty("tx_ref", out var tx) && d.TryGetProperty("id", out var id)
+                && (!d.TryGetProperty("status", out var st) || st.GetString() == "successful"))
+            {
+                var ok = await bs.ActivateAsync(tx.GetString()!, id.ToString());
+                log.LogInformation("Webhook for {Tx} activated={Ok}", tx.GetString(), ok);
+            }
+            else log.LogInformation("Webhook ignored: no successful charge data");
             return Results.Ok();
         });
+
+
     }
 }
