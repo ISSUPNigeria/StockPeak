@@ -70,78 +70,154 @@ public class SimulatedMarketData : IMarketDataService
     }
 }
 
-/// <summary>Free Gemini API (Google AI Studio key) for 7-day forecasts.</summary>
+/// <summary>
+/// Gemini AI forecasts with retry and model fallback.
+/// </summary>
 public class GeminiPredictor(HttpClient http, IConfiguration cfg) : IAiPredictor
 {
-    public async Task<Prediction> PredictAsync(string symbol, IReadOnlyList<Candle> h, double rsi)
+    public async Task<Prediction> PredictAsync(
+        string symbol,
+        IReadOnlyList<Candle> h,
+        double rsi)
     {
-        var closes = string.Join(",", h.TakeLast(60).Select(c => c.Close));
-        var prompt = $"You are a market analyst. Last 60 daily closes for {symbol}: {closes}. RSI14={rsi:F1}. Forecast the next 7 days. Reply ONLY with JSON: {{\"direction\":\"up|down|sideways\",\"targetPrice\":number,\"confidence\":integer 0-100,\"reasoning\":\"max 40 words\"}}";
+        var closes = string.Join(",",
+            h.TakeLast(60).Select(c => c.Close));
+
+        var prompt =
+            $"You are a market analyst. Last 60 daily closes for {symbol}: {closes}. " +
+            $"RSI14={rsi:F1}. Forecast the next 7 days. " +
+            $"Reply ONLY with JSON: " +
+            "{\"direction\":\"up|down|sideways\",\"targetPrice\":number," +
+            "\"confidence\":integer 0-100,\"reasoning\":\"max 40 words\"}";
+
+        var apiKey = cfg["Gemini:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException(
+                "Gemini API key is not configured.");
+
         var models = new[]
-{
-    cfg["Gemini:Model"] ?? "gemini-3.8-flash",
-    "gemini-3.8-flash-lite"
-};
+        {
+            cfg["Gemini:Model"] ?? "gemini-3.8-flash",
+            "gemini-3.8-flash-lite"
+        };
 
-HttpResponseMessage? res = null;
+        HttpResponseMessage? response = null;
+        string responseBody = string.Empty;
 
-foreach (var model in models)
-{
-    for (var attempt = 1; attempt <= 3; attempt++)
-    {
-        res = await http.PostAsJsonAsync(
-            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cfg["Gemini:ApiKey"]}",
-            new
+        foreach (var model in models)
+        {
+            Console.WriteLine($"Trying Gemini model: {model}");
+
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                contents = new[]
+                try
                 {
-                    new
-                    {
-                        parts = new[]
+                    response = await http.PostAsJsonAsync(
+                        $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}",
+                        new
                         {
-                            new { text = prompt }
-                        }
+                            contents = new[]
+                            {
+                                new
+                                {
+                                    parts = new[]
+                                    {
+                                        new { text = prompt }
+                                    }
+                                }
+                            },
+                            generationConfig = new
+                            {
+                                responseMimeType = "application/json"
+                            }
+                        });
+
+                    responseBody =
+                        await response.Content.ReadAsStringAsync();
+
+                    Console.WriteLine(
+                        $"Gemini Model: {model}");
+
+                    Console.WriteLine(
+                        $"Gemini Attempt: {attempt}");
+
+                    Console.WriteLine(
+                        $"Gemini Status: {(int)response.StatusCode}");
+
+                    Console.WriteLine(
+                        $"Gemini Response: {responseBody}");
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        using var doc =
+                            JsonDocument.Parse(responseBody);
+
+                        var text =
+                            doc.RootElement
+                                .GetProperty("candidates")[0]
+                                .GetProperty("content")
+                                .GetProperty("parts")[0]
+                                .GetProperty("text")
+                                .GetString()!;
+
+                        using var predictionDoc =
+                            JsonDocument.Parse(text);
+
+                        var result =
+                            predictionDoc.RootElement;
+
+                        return new Prediction(
+                            result.GetProperty("direction").GetString()!,
+                            result.GetProperty("targetPrice").GetDecimal(),
+                            result.GetProperty("confidence").GetInt32(),
+                            result.GetProperty("reasoning").GetString()!,
+                            "AI forecasts are not financial advice.");
                     }
-                },
-                generationConfig = new
-                {
-                    responseMimeType = "application/json"
+
+                    // Retry when Gemini is overloaded
+                    if (response.StatusCode ==
+                        HttpStatusCode.ServiceUnavailable)
+                    {
+                        Console.WriteLine(
+                            $"Gemini overloaded. Retry {attempt}/3.");
+
+                        await Task.Delay(
+                            TimeSpan.FromSeconds(attempt * 2));
+
+                        continue;
+                    }
+
+                    // Model doesn't exist anymore
+                    if (response.StatusCode ==
+                        HttpStatusCode.NotFound)
+                    {
+                        Console.WriteLine(
+                            $"Gemini model {model} unavailable. Trying fallback.");
+
+                        break;
+                    }
+
+                    break;
                 }
-            });
+                catch (Exception ex)
+                {
+                    Console.WriteLine(
+                        $"Gemini Exception: {ex}");
 
-        if (res.IsSuccessStatusCode)
-        {
-            goto Success;
+                    if (attempt == 3)
+                        break;
+
+                    await Task.Delay(
+                        TimeSpan.FromSeconds(attempt * 2));
+                }
+            }
         }
 
-        if (res.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
-        {
-            Console.WriteLine(
-                $"Gemini model {model} is busy. Retry {attempt}/3");
-
-            await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
-            continue;
-        }
-
-        break;
+        throw new Exception(
+            $"All Gemini models failed. Last response: {responseBody}");
     }
 }
-
-throw new Exception("No Gemini model available.");
-
-Success:
-
-var responseBody = await res!.Content.ReadAsStringAsync();
-
-using var doc = JsonDocument.Parse(responseBody);
-res.EnsureSuccessStatusCode();
-        using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
-        var text = doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
-        using var j = JsonDocument.Parse(text); var r = j.RootElement;
-        return new(r.GetProperty("direction").GetString()!, r.GetProperty("targetPrice").GetDecimal(), r.GetProperty("confidence").GetInt32(), r.GetProperty("reasoning").GetString()!, "AI forecasts are not financial advice.");
-    }
-}
-
 public class FlutterwaveGateway(HttpClient http, IConfiguration cfg) : IPaymentGateway
 {
     HttpRequestMessage Req(HttpMethod m, string path) { var r = new HttpRequestMessage(m, "https://api.flutterwave.com/v3/" + path); r.Headers.Authorization = new("Bearer", cfg["Flutterwave:SecretKey"]); return r; }
