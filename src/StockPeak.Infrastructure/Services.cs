@@ -77,35 +77,63 @@ public class GeminiPredictor(HttpClient http, IConfiguration cfg) : IAiPredictor
     {
         var closes = string.Join(",", h.TakeLast(60).Select(c => c.Close));
         var prompt = $"You are a market analyst. Last 60 daily closes for {symbol}: {closes}. RSI14={rsi:F1}. Forecast the next 7 days. Reply ONLY with JSON: {{\"direction\":\"up|down|sideways\",\"targetPrice\":number,\"confidence\":integer 0-100,\"reasoning\":\"max 40 words\"}}";
-        var model = cfg["Gemini:Model"] ?? "gemini-2.5-flash";
-       var url =
-    $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cfg["Gemini:ApiKey"]}";
+        var models = new[]
+{
+    cfg["Gemini:Model"] ?? "gemini-3.8-flash",
+    "gemini-3.8-flash-lite"
+};
 
-var res = await http.PostAsJsonAsync(
-    url,
-    new
+HttpResponseMessage? res = null;
+
+foreach (var model in models)
+{
+    for (var attempt = 1; attempt <= 3; attempt++)
     {
-        contents = new[]
-        {
+        res = await http.PostAsJsonAsync(
+            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cfg["Gemini:ApiKey"]}",
             new
             {
-                parts = new[]
+                contents = new[]
                 {
-                    new { text = prompt }
+                    new
+                    {
+                        parts = new[]
+                        {
+                            new { text = prompt }
+                        }
+                    }
+                },
+                generationConfig = new
+                {
+                    responseMimeType = "application/json"
                 }
-            }
-        },
-        generationConfig = new
+            });
+
+        if (res.IsSuccessStatusCode)
         {
-            responseMimeType = "application/json"
+            goto Success;
         }
-    });
 
-var responseBody = await res.Content.ReadAsStringAsync();
+        if (res.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+        {
+            Console.WriteLine(
+                $"Gemini model {model} is busy. Retry {attempt}/3");
 
-Console.WriteLine($"Gemini Status: {(int)res.StatusCode}");
-Console.WriteLine($"Gemini Response: {responseBody}");
+            await Task.Delay(TimeSpan.FromSeconds(attempt * 2));
+            continue;
+        }
 
+        break;
+    }
+}
+
+throw new Exception("No Gemini model available.");
+
+Success:
+
+var responseBody = await res!.Content.ReadAsStringAsync();
+
+using var doc = JsonDocument.Parse(responseBody);
 res.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
         var text = doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
