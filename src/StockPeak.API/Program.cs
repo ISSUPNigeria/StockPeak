@@ -44,6 +44,12 @@ b.Services.AddOpenApi(o => o.AddDocumentTransformer((doc, _, _) =>
     return Task.CompletedTask;
 }));
 
+var apiKey = b.Configuration["Gemini:ApiKey"];
+var model = b.Configuration["Gemini:Model"];
+
+Console.WriteLine($"Gemini Key Loaded: {!string.IsNullOrWhiteSpace(apiKey)}");
+Console.WriteLine($"Gemini Model: {model}");
+
 var app = b.Build();
 
 using (var s = app.Services.CreateScope()) s.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
