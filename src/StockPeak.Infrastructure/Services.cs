@@ -99,7 +99,7 @@ public class GeminiPredictor(HttpClient http, IConfiguration cfg) : IAiPredictor
         var models = new[]
         {
             cfg["Gemini:Model"] ?? "gemini-3.8-flash",
-            "gemini-3.8-flash-lite"
+            "gemini-3.8-pro"
         };
 
         HttpResponseMessage? response = null;
