@@ -50,6 +50,17 @@ var model = b.Configuration["Gemini:Model"];
 Console.WriteLine($"Gemini Key Loaded: {!string.IsNullOrWhiteSpace(apiKey)}");
 Console.WriteLine($"Gemini Model: {model}");
 
+Console.WriteLine("=== GEMINI DEBUG ===");
+
+Console.WriteLine(
+    $"Gemini:ApiKey => [{b.Configuration["Gemini:ApiKey"]}]");
+
+Console.WriteLine(
+    $"GEMINI_API_KEY => [{b.Configuration["GEMINI_API_KEY"]}]");
+
+Console.WriteLine(
+    $"Gemini:Model => [{b.Configuration["Gemini:Model"]}]");
+
 var app = b.Build();
 
 using (var s = app.Services.CreateScope()) s.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
