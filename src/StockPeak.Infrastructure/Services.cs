@@ -78,9 +78,35 @@ public class GeminiPredictor(HttpClient http, IConfiguration cfg) : IAiPredictor
         var closes = string.Join(",", h.TakeLast(60).Select(c => c.Close));
         var prompt = $"You are a market analyst. Last 60 daily closes for {symbol}: {closes}. RSI14={rsi:F1}. Forecast the next 7 days. Reply ONLY with JSON: {{\"direction\":\"up|down|sideways\",\"targetPrice\":number,\"confidence\":integer 0-100,\"reasoning\":\"max 40 words\"}}";
         var model = cfg["Gemini:Model"] ?? "gemini-2.5-flash";
-        var res = await http.PostAsJsonAsync($"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cfg["Gemini:ApiKey"]}",
-            new { contents = new[] { new { parts = new[] { new { text = prompt } } } }, generationConfig = new { responseMimeType = "application/json" } });
-        res.EnsureSuccessStatusCode();
+       var url =
+    $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={cfg["Gemini:ApiKey"]}";
+
+var res = await http.PostAsJsonAsync(
+    url,
+    new
+    {
+        contents = new[]
+        {
+            new
+            {
+                parts = new[]
+                {
+                    new { text = prompt }
+                }
+            }
+        },
+        generationConfig = new
+        {
+            responseMimeType = "application/json"
+        }
+    });
+
+var responseBody = await res.Content.ReadAsStringAsync();
+
+Console.WriteLine($"Gemini Status: {(int)res.StatusCode}");
+Console.WriteLine($"Gemini Response: {responseBody}");
+
+res.EnsureSuccessStatusCode();
         using var doc = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
         var text = doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")[0].GetProperty("text").GetString()!;
         using var j = JsonDocument.Parse(text); var r = j.RootElement;
